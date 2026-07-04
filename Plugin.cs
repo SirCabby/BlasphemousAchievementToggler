@@ -26,7 +26,7 @@ namespace BlasAchievementToggler
     //
     // Steam-safe by default: it drives the game's LOCAL achievement records (what the in-game page
     // reads), not the Steam API, so it never permanently earns/clears a Steam achievement.
-    [BepInPlugin("local.blasphemous.achievementtoggler", "Blasphemous Achievement Toggler", "1.0.0")]
+    [BepInPlugin("local.blasphemous.achievementtoggler", "Blasphemous Achievement Toggler", "1.1.0")]
     public class AchievementToggler : BaseUnityPlugin
     {
         const string CoreName        = "Framework.Managers.Core";
@@ -59,7 +59,7 @@ namespace BlasAchievementToggler
         bool ready;
         float gateAccum;
         bool onAchievementsPage;
-        bool forceShown;
+        bool userHidden;   // hid the panel with the hotkey while on the Achievements page
 
         // UI state
         List<Row> rows;
@@ -73,8 +73,8 @@ namespace BlasAchievementToggler
         void Awake()
         {
             L = Logger;
-            cfgToggleKey = Config.Bind("Keys", "TogglePanel", KeyCode.F8, "Show / hide the achievement toggle panel.");
-            cfgAutoShow  = Config.Bind("Panel", "AutoShowOnAchievementsPage", true, "Automatically show the panel while the in-game Achievements page is open.");
+            cfgToggleKey = Config.Bind("Keys", "TogglePanel", KeyCode.F8, "Hide / show the panel WHILE the Achievements page is open (does nothing elsewhere, so it won't clash with other mods during gameplay).");
+            cfgAutoShow  = Config.Bind("Panel", "ShowOnAchievementsPage", true, "Show the panel while the Achievements page is open.");
 
             var coreType   = FindType(CoreName);
             var achType    = FindType(AchievementName);
@@ -123,7 +123,7 @@ namespace BlasAchievementToggler
 
             ready = pCoreAchievements != null && mGetAll != null && fId != null && fProgress != null &&
                     mSetUnlocked != null && fLocalCache != null && mSaveLocal != null;
-            L.LogInfo($"[AchToggler] v1.0 ready={ready}. extrasPage={extrasType != null && mCreateAchievements != null}. " +
+            L.LogInfo($"[AchToggler] v1.1 ready={ready}. extrasPage={extrasType != null && mCreateAchievements != null}. " +
                       $"{cfgToggleKey.Value}=toggle panel.");
             if (!ready) L.LogWarning("[AchToggler] achievement API not fully resolved - toggling may be unavailable.");
         }
@@ -133,17 +133,17 @@ namespace BlasAchievementToggler
             gateAccum += Time.unscaledDeltaTime;
             if (gateAccum >= 0.3f) { gateAccum = 0f; onAchievementsPage = IsOnAchievementsPage(); }
 
-            if (Input.GetKeyDown(cfgToggleKey.Value))
-            {
-                forceShown = !forceShown;
-                if (PanelVisible()) BuildRows();
-            }
+            // The hotkey only hides/shows the panel WHILE the Achievements page is open, so it can't
+            // clash with other mods' hotkeys during normal gameplay. Reset when we leave the page.
+            if (onAchievementsPage) { if (Input.GetKeyDown(cfgToggleKey.Value)) userHidden = !userHidden; }
+            else userHidden = false;
+
             // Rebuild the list the moment the page opens (so it's current), once.
             if (PanelVisible() && rows == null) BuildRows();
             if (!PanelVisible()) rows = null;
         }
 
-        bool PanelVisible() => forceShown || (cfgAutoShow.Value && onAchievementsPage);
+        bool PanelVisible() => onAchievementsPage && cfgAutoShow.Value && !userHidden;
 
         bool IsOnAchievementsPage()
         {
@@ -246,7 +246,7 @@ namespace BlasAchievementToggler
             if (GUILayout.Button("Lock all",   btnStyle, GUILayout.Width(90f))) SetAll(false);
             GUILayout.Label("Filter:", hintStyle, GUILayout.Width(44f));
             filter = GUILayout.TextField(filter ?? "", GUILayout.MinWidth(120f));
-            if (GUILayout.Button("Close", btnStyle, GUILayout.Width(70f))) forceShown = false;
+            if (GUILayout.Button("Close", btnStyle, GUILayout.Width(70f))) userHidden = true;
             GUILayout.EndHorizontal();
             GUILayout.Space(4f);
 
